@@ -58,12 +58,12 @@ if $debug
   STDERR.puts ARGV.inspect
 end
 
-def doEnc ciphername, mode, encrypt, key, iv, iin
-    len_in, len_out, out = 0, 0, []
+def doEnc ciphername, mode, encrypt, key, iv, iin, iout
+    len_in, len_out = 0, 0
     st = "#{ciphername}-#{key.b.size*8}-#{mode}" # "AES-128-CFB"
     enc = OpenSSL::Cipher.new st
-    enc.key = k = key
-    enc.iv  = v = iv
+    enc.key = key
+    enc.iv  = iv
     if encrypt
       enc.encrypt()
     else
@@ -72,23 +72,22 @@ def doEnc ciphername, mode, encrypt, key, iv, iin
     while true
       src = iin.read(10240)
       break unless src
-      out << enc.update(src.b)
+      msg = enc.update(src.b)
       len_in += src.b.size
-      len_out += out[-1].b.size
+      len_out += msg.b.size
+      iout.write(msg)
     end
-    out << enc.final
-    len_out += out[-1].b.size
+    msg = enc.final
+    len_out += msg.b.size
+    iout.write(msg)
     if $debug
-      STDERR.puts([st, k, v, len_in,  out.join.b.size].inspect)
+      STDERR.puts "key:#{key} iv:#{iv}  src len: #{len_in}  dst len: #{len_out}"
     end
-    return len_in, len_out, out
+    return len_in, len_out
 end
 
 def main
-    len_in, len_out, dst = doEnc($options[:cipher], $options[:mode], $options[:encrypt], $options[:key], $options[:iv], STDIN)
-    if $debug
-        STDERR.puts "key:#{$options[:key]} iv:#{$options[:iv]}  src len: #{len_in}  dst len: #{len_out}"
-    end
-    print(dst.join)
+    len_in, len_out = doEnc($options[:cipher], $options[:mode], $options[:encrypt], $options[:key], $options[:iv], STDIN, STDOUT)
+    # print(dst.join)
 end
 main

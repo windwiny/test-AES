@@ -83,12 +83,12 @@ func init() {
 }
 
 func main() {
-	dst := new(strings.Builder)
-	len_in, len_out := DoEnc(ciphername, mode, en, []byte(key), []byte(iv), os.Stdin, dst)
+	// dst := new(strings.Builder)
+	len_in, len_out := DoEnc(ciphername, mode, en, []byte(key), []byte(iv), os.Stdin, os.Stdout)
 	if debug {
 		fmt.Fprintf(os.Stderr, "key:%q iv:%q src len:%d dst len:%d\n", string(key), string(iv), len_in, len_out)
 	}
-	fmt.Printf("%s", dst.String())
+	// fmt.Printf("%s", dst.String())
 }
 
 func DoEnc(ciphername, mode string, en bool, key, iv []byte, in io.Reader, out io.Writer) (len_in, len_out int) {
