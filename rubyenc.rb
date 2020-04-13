@@ -32,6 +32,7 @@ OptionParser.new do |opts|
     $options[:mode] = v
   end
   opts.on( "--key=KEY", "Key= 16|24|32 bytes") do |v|
+    v = v.b.scan(/../).map{|e| e.to_i(16).chr}.join.b
     if ![16,24,32].include? v.b.size
         STDERR.puts "key size not 16/24/32 bytes"
         exit(1)
@@ -39,6 +40,7 @@ OptionParser.new do |opts|
     $options[:key] = v
   end
   opts.on("--iv=IV", "IV= 16 bytes") do |v|
+    v = v.b.scan(/../).map{|e| e.to_i(16).chr}.join.b
     if 16 != v.b.size
         STDERR.puts "iv size not 16 bytes"
         exit(1)

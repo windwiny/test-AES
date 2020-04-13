@@ -6,6 +6,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/des"
+	"encoding/hex"
 	"flag"
 	"fmt"
 	"io"
@@ -15,7 +16,8 @@ import (
 
 var debug bool
 var en bool
-var ciphername, mode, key, iv string
+var ciphername, mode string
+var key, iv []byte
 
 func init() {
 	flag.BoolVar(&debug, "debug", false, "DEBUG mode")
@@ -23,8 +25,9 @@ func init() {
 	flag.StringVar(&ciphername, "enc", "AES", "ciphername AES|DES")
 	flag.StringVar(&mode, "mode", "OFB", "cipher mode CFB|CTR|OFB")
 	flag.BoolVar(&en, "e", true, "true encrypt or false decrypt")
-	flag.StringVar(&key, "key", "", "Key= 16|24|32 bytes")
-	flag.StringVar(&iv, "iv", "", "IV= 16 bytes")
+	var key2, iv2 string
+	flag.StringVar(&key2, "key", "", "Key to use, specified as a hexadecimal string, 16|24|32 byte")
+	flag.StringVar(&iv2, "iv", "", "IV to use, specified as a hexadecimal string, 16 byte")
 
 	flag.Usage = func() {
 		fmt.Fprintf(flag.CommandLine.Output(),
@@ -35,6 +38,46 @@ func init() {
 		flag.PrintDefaults()
 	}
 	flag.Parse()
+
+	switch ciphername {
+	case "AES", "DES":
+	default:
+		fmt.Fprintf(os.Stderr, "cipher support AES/DES, unknow \"%s\"\n", ciphername)
+		os.Exit(1)
+	}
+
+	switch mode {
+	case "CBC", "CFB", "CTR", "OFB":
+	default:
+		fmt.Fprintf(os.Stderr, "cipher mode support CBC|CFB|CTR|OFB, unknow \"%s\"\n", mode)
+		os.Exit(1)
+	}
+
+	var err error
+	key, err = hex.DecodeString(key2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "key not hexadecimal string\n")
+		os.Exit(1)
+	}
+	switch len(key) {
+	case 16, 24, 32:
+	default:
+		fmt.Fprintf(os.Stderr, "key size not 16/24/32 byte, is [%d]\n", len(key))
+		os.Exit(1)
+	}
+
+	iv, err = hex.DecodeString(iv2)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "iv not hexadecimal string\n")
+		os.Exit(1)
+	}
+	switch len(iv) {
+	case 16:
+	default:
+		fmt.Fprintf(os.Stderr, "iv size not 16 byte, is [%d]\n", len(iv))
+		os.Exit(1)
+	}
+
 	if !debug {
 		for _, v := range os.Environ() {
 			v := strings.ToUpper(v)
@@ -44,56 +87,29 @@ func init() {
 		}
 	}
 	if debug {
-		fmt.Fprintf(os.Stderr, ` Args:
-  debug %v
-  encrypt? %v
-  enc %v
-  mode %v
-  key %v
-  iv %v
-
-`, debug, en, ciphername, mode, key, iv)
+		fmt.Fprintf(os.Stderr, " Args:\n"+
+			"  debug:[%v]  encrypt?:[%v]  enc:[%v]  mode:[%v]\n"+
+			"  key: %v\n"+
+			"  iv: %v\n\n",
+			debug, en, ciphername, mode, key, iv)
 	}
-
-	switch len([]byte(key)) {
-	case 16, 24, 32:
-	default:
-		fmt.Fprintf(os.Stderr, "key size not 16/24/32 bytes\n")
-		os.Exit(1)
-	}
-	switch len([]byte(iv)) {
-	case 16:
-	default:
-		fmt.Fprintf(os.Stderr, "iv size not 16 bytes\n")
-		os.Exit(1)
-	}
-	switch ciphername {
-	case "AES", "DES":
-	default:
-		fmt.Fprintf(os.Stderr, "cipher support AES/DES, unknow \"%s\"\n", ciphername)
-		os.Exit(1)
-	}
-	switch mode {
-	case "CBC", "CFB", "CTR", "OFB":
-	default:
-		fmt.Fprintf(os.Stderr, "cipher mode support CBC|CFB|CTR|OFB, unkonow \"%s\"\n", mode)
-		os.Exit(1)
-	}
-
 }
 
 func main() {
 	// dst := new(strings.Builder)
-	len_in, len_out := DoEnc(ciphername, mode, en, []byte(key), []byte(iv), os.Stdin, os.Stdout)
+	len_in, len_out, err := DoEnc(ciphername, mode, en, key, iv, os.Stdin, os.Stdout)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "%v", err)
+		os.Exit(2)
+	}
 	if debug {
 		fmt.Fprintf(os.Stderr, "key:%q iv:%q src len:%d dst len:%d\n", string(key), string(iv), len_in, len_out)
 	}
 	// fmt.Printf("%s", dst.String())
 }
 
-func DoEnc(ciphername, mode string, en bool, key, iv []byte, in io.Reader, out io.Writer) (len_in, len_out int) {
+func DoEnc(ciphername, mode string, en bool, key, iv []byte, in io.Reader, out io.Writer) (len_in, len_out int, err error) {
 	var blk cipher.Block
-	var err error
 
 	switch ciphername {
 	case "AES":
@@ -101,12 +117,13 @@ func DoEnc(ciphername, mode string, en bool, key, iv []byte, in io.Reader, out i
 	case "DES":
 		blk, err = des.NewCipher(key)
 	default:
-		fmt.Fprintf(os.Stderr, "not support \"%s\" cipher\n", ciphername)
-		os.Exit(1)
+		err = fmt.Errorf("not support \"%s\" cipher\n", ciphername)
+		return
 	}
 
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "err in aes.NewCipher %q\n", err)
+		err = fmt.Errorf("err in aes.NewCipher %q\n", err)
+		return
 	}
 
 	var blkmode cipher.BlockMode
@@ -129,8 +146,8 @@ func DoEnc(ciphername, mode string, en bool, key, iv []byte, in io.Reader, out i
 	case "OFB":
 		stream = cipher.NewOFB(blk, iv)
 	default:
-		fmt.Fprintf(os.Stderr, "not support \"%s\" mode\n", mode)
-		os.Exit(1)
+		err = fmt.Errorf("not support \"%s\" mode\n", mode)
+		return
 	}
 	_ = stream
 	_ = blkmode

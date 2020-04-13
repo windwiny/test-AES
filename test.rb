@@ -15,32 +15,36 @@ end
 
 $reverse = ARGV.include?('-r')
 
+if !File.file? %{#{__dir__}/goenc}
+  system "go build -o goenc goenc.go"
+end
+
 %w{AES}.each do |cipher|
     %w{CFB CTR OFB}.each do |mode|
         STDERR.puts "---------- #{cipher} --- #{mode} -----------------------------"
         llen = 16
-        key = "234asdfaasfdasfdsfsdfs234324324324234234324dffsdff"[0...llen]
-        iv = "kdl3ialasfasd23432432432f4asfasdfs0mernzx;"[0...llen]
+        key = "234asdfaasfdasfdsfsdfs234324324324234234324dffsdff".b[0...llen]
+        iv = "kdl3ialasfasd23432432432f4asfasdfs0mernzx;".b[0...llen]
+        key = key.b.split(//).map{|e| format "%02X" % e.ord }.join
+        iv  = iv.b.split(//).map{|e| format "%02X" % e.ord }.join
 
         puts '-- ruby --'
-        c1=%{ruby #{__dir__}/rubyenc.rb --enc #{cipher} --mode #{mode} -e --key '#{key}' --iv '#{iv}' |}
-        c2=%{ruby #{__dir__}/rubyenc.rb --enc #{cipher} --mode #{mode} -d --key '#{key}' --iv '#{iv}' |} if $reverse
+        c1=%{ruby #{__dir__}/rubyenc.rb --enc #{cipher} --mode #{mode} -e --key #{key} --iv #{iv} |}
+        c2=%{ruby #{__dir__}/rubyenc.rb --enc #{cipher} --mode #{mode} -d --key #{key} --iv #{iv} |} if $reverse
         cmd =  %{ cat '#{$file}' | #{c1} #{c2} md5sum - }
         puts cmd
         system cmd
 
         puts '-- golang --'
-        c1=%{#{__dir__}/goenc --enc #{cipher} --mode #{mode} -e --key '#{key}' --iv '#{iv}' |}
-        c2=%{#{__dir__}/goenc --enc #{cipher} --mode #{mode} -e=false --key '#{key}' --iv '#{iv}' |} if $reverse
+        c1=%{#{__dir__}/goenc --enc #{cipher} --mode #{mode} -e=true --key #{key} --iv #{iv} |}
+        c2=%{#{__dir__}/goenc --enc #{cipher} --mode #{mode} -e=false --key #{key} --iv #{iv} |} if $reverse
         cmd =  %{ cat '#{$file}' | #{c1} #{c2} md5sum - }
         puts cmd
         system cmd
 
         puts '-- openssl --'
-        key2 = key.split(//).map{|e| format "%02X" % e.ord }.join
-        iv2  = iv.split(//).map{|e| format "%02X" % e.ord }.join
-        c1=%{openssl enc -#{cipher.downcase}-#{llen*8}-#{mode.downcase} -K '#{key2}' -iv '#{iv2}' |}
-        c2=%{openssl enc -d -#{cipher.downcase}-#{llen*8}-#{mode.downcase} -K '#{key2}' -iv '#{iv2}' |} if $reverse
+        c1=%{openssl enc -#{cipher.downcase}-#{llen*8}-#{mode.downcase} -K #{key} -iv #{iv} |}
+        c2=%{openssl enc -d -#{cipher.downcase}-#{llen*8}-#{mode.downcase} -K #{key} -iv #{iv} |} if $reverse
         cmd =  %{ cat '#{$file}' | #{c1} #{c2} md5sum - }
         puts cmd
         system cmd
